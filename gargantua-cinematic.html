@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#030509">
+  <title>GARGANTUA — 黑洞可视化</title>
+  <style>
+    :root { color-scheme: dark; --ink:#f1eee8; --muted:#a2a4aa; --dim:#667079; --line:rgba(232,224,206,.17); --amber:#e8b778; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#030509; }
+    body { font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; color:var(--ink); -webkit-font-smoothing:antialiased; }
+    button { font:inherit; }
+    #universe { display:block; position:fixed; inset:0; width:100%; height:100%; touch-action:none; cursor:grab; }
+    #universe.dragging { cursor:grabbing; }
+    .scrim { pointer-events:none; position:fixed; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,transparent 19%,transparent 70%,rgba(0,0,0,.56) 100%); }
+    .grain { pointer-events:none; position:fixed; inset:0; opacity:.18; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.23' filter='url(%23n)'/%3E%3C/svg%3E"); }
+    .ui { position:fixed; inset:0; pointer-events:none; transition:opacity .35s ease; }
+    .ui.hidden { opacity:0; }
+    .ui.hidden button { pointer-events:none; }
+    .ui button { pointer-events:auto; }
+    .topbar { position:absolute; left:clamp(22px,3.6vw,64px); right:clamp(22px,3.6vw,64px); top:clamp(24px,4vw,50px); display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }
+    .brand { display:flex; align-items:center; gap:15px; }
+    .brand-mark { width:32px; height:32px; position:relative; display:grid; place-items:center; border:1px solid rgba(245,222,176,.7); border-radius:50%; transform:rotate(-26deg); }
+    .brand-mark:before { content:""; position:absolute; width:44px; height:10px; border:1.5px solid var(--amber); border-radius:50%; transform:rotate(25deg); }
+    .brand-mark:after { content:""; width:13px; height:13px; background:#07080a; border:1.5px solid var(--amber); border-radius:50%; box-shadow:0 0 13px rgba(240,174,97,.55); }
+    .brand-name { font-size:13px; font-weight:650; letter-spacing:.26em; line-height:1; }
+    .brand-sub { margin-top:8px; font-size:9px; font-weight:550; letter-spacing:.28em; color:var(--muted); }
+    .header-right { display:flex; align-items:center; gap:24px; }
+    .live { display:flex; align-items:center; gap:9px; font-size:10px; color:#c6c9c7; letter-spacing:.19em; white-space:nowrap; }
+    .live:before { content:""; width:6px; height:6px; border-radius:50%; background:#dba66e; box-shadow:0 0 0 5px rgba(219,166,110,.10),0 0 13px rgba(241,184,117,.9); animation:pulse 2.7s infinite; }
+    @keyframes pulse { 50% {opacity:.42;box-shadow:0 0 0 8px rgba(219,166,110,0)} }
+    .rule { height:18px; width:1px; background:var(--line); }
+    .top-meta { color:var(--muted); font-size:10px; letter-spacing:.14em; white-space:nowrap; }
+    .eyebrow { color:var(--amber); font-size:10px; font-weight:650; letter-spacing:.28em; text-transform:uppercase; }
+    .hero { position:absolute; bottom:clamp(130px,17vh,190px); left:clamp(22px,5.2vw,88px); max-width:485px; text-shadow:0 2px 30px rgba(0,0,0,.72); }
+    .hero .eyebrow { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .hero .eyebrow:before { content:""; display:block; width:29px; height:1px; background:var(--amber); }
+    h1 { margin:0 0 18px; font-family:Georgia,"Times New Roman",serif; font-size:clamp(46px,6vw,94px); line-height:.95; font-weight:400; letter-spacing:.035em; }
+    .hero p { margin:0; max-width:365px; color:#c5c1b9; font-size:13px; line-height:1.9; letter-spacing:.065em; }
+    .panel { position:absolute; right:clamp(22px,5.2vw,88px); bottom:clamp(126px,17vh,190px); width:214px; }
+    .panel-header { padding-bottom:16px; border-bottom:1px solid var(--line); font-size:10px; font-weight:650; letter-spacing:.26em; color:#e7e1d8; }
+    .datum { display:flex; justify-content:space-between; align-items:baseline; padding:15px 0 12px; border-bottom:1px solid rgba(232,224,206,.1); gap:12px; }
+    .datum span { color:#989da3; font-size:11px; letter-spacing:.08em; }
+    .datum strong { font-size:12px; letter-spacing:.075em; font-weight:550; white-space:nowrap; }
+    .datum strong em { font-size:9px; font-style:normal; color:#858c90; margin-left:4px; }
+    .panel-note { margin-top:18px; color:#81898f; font-size:10px; line-height:1.7; letter-spacing:.05em; }
+    .footer { position:absolute; left:clamp(22px,3.6vw,64px); right:clamp(22px,3.6vw,64px); bottom:clamp(21px,3vw,42px); display:flex; align-items:center; justify-content:space-between; gap:25px; padding-top:18px; border-top:1px solid var(--line); }
+    .instructions { display:flex; align-items:center; gap:25px; }
+    .instruction { display:flex; align-items:center; gap:8px; color:#b3b5b7; font-size:10px; letter-spacing:.06em; white-space:nowrap; }
+    .key { min-width:23px; height:23px; padding:0 4px; border:1px solid rgba(225,225,225,.32); border-radius:5px; color:#d9d8d4; display:grid; place-items:center; font-size:10px; line-height:1; }
+    .actions { display:flex; gap:8px; align-items:center; }
+    .control { height:32px; padding:0 13px; background:rgba(15,19,23,.62); border:1px solid rgba(220,223,220,.2); color:#d7d5d1; border-radius:3px; cursor:pointer; font-size:10px; letter-spacing:.09em; white-space:nowrap; transition:background .2s,border-color .2s,color .2s; }
+    .control:hover { background:rgba(231,186,127,.12); border-color:rgba(231,186,127,.65); color:#fff; }
+    .control:focus-visible { outline:2px solid var(--amber);outline-offset:2px; }
+    .control.active { border-color:rgba(231,186,127,.55); color:#f4cf9b; }
+    #show-ui { display:none; position:fixed; z-index:5; top:24px; right:24px; }
+    #show-ui.visible { display:block; }
+    #fallback { display:none; position:fixed; inset:0; z-index:10; flex-direction:column; align-items:center; justify-content:center; padding:30px; text-align:center; background:#040608; color:#eee; }
+    #fallback h2 { font:normal 40px Georgia,serif; letter-spacing:.06em; }
+    #fallback p { color:#adb4bb; line-height:1.8; max-width:480px; }
+    .side-index { position:absolute; left:clamp(22px,3.6vw,64px); top:49%; transform:translateY(-50%) rotate(-90deg) translateX(-50%); transform-origin:left center; color:#8c969b; font-size:9px; letter-spacing:.3em; white-space:nowrap; }
+    @media (max-width:900px) { .panel { display:none; } .hero { bottom:125px; } .top-meta,.header-right .rule { display:none; } .footer { bottom:22px; } }
+    @media (max-width:650px) { .topbar { top:25px; } .header-right { display:none; } .hero { left:25px; right:25px; bottom:155px; } h1 { font-size:clamp(47px,12vw,68px); } .hero p { font-size:12px; max-width:290px; } .footer { left:24px; right:24px; bottom:20px; align-items:flex-start; flex-direction:column; gap:16px; } .instructions { gap:13px; flex-wrap:wrap; } .instruction { font-size:9px; } .side-index { display:none; } .actions { width:100%; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; } .actions .control { min-width:0; width:100%; padding:0 2px; font-size:9px; letter-spacing:0; } }
+    @media (max-height:640px) { .hero { bottom:118px; } .hero p { display:none; } .panel { bottom:115px; } }
+  </style>
+</head>
+<body>
+  <canvas id="universe" aria-label="交互式黑洞动画：吸积盘、事件视界与引力透镜效果"></canvas>
+  <div class="scrim"></div><div class="grain"></div>
+  <div class="ui" id="ui">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><div class="brand-name">GRAVITY / LAB</div><div class="brand-sub">AN INTERACTIVE EXPERIENCE</div></div></div>
+      <div class="header-right"><div class="live">实时渲染中</div><div class="rule"></div><div class="top-meta">宇宙档案 / 001 &nbsp;—&nbsp; 深空观测</div></div>
+    </header>
+    <div class="side-index">SPACETIME IS NOT A STRAIGHT LINE &nbsp;—&nbsp; 01 / 03</div>
+    <main class="hero">
+      <div class="eyebrow">穿越引力的边界</div>
+      <h1>Gargantua<span style="color:#dba96e">.</span></h1>
+      <p>光在这里弯曲，时间在这里变慢。拖动视角，凝视事件视界边缘那道被引力重塑的光。</p>
+    </main>
+    <aside class="panel" aria-label="渲染数据">
+      <div class="panel-header">OBSERVATION DATA &nbsp; / &nbsp; 观测数据</div>
+      <div class="datum"><span>相机距离</span><strong id="distance">12.2 <em>Rg</em></strong></div>
+      <div class="datum"><span>观测仰角</span><strong id="angle">22.9 <em>°</em></strong></div>
+      <div class="datum"><span>帧率</span><strong id="fps">-- <em>FPS</em></strong></div>
+      <div class="datum"><span>视界状态</span><strong style="color:#e2b47b">不可逃逸</strong></div>
+      <div class="panel-note">艺术化的广义相对论光线偏折模拟。吸积盘纹理、光子环和星空透镜效果均由 GPU 实时生成。</div>
+    </aside>
+    <footer class="footer">
+      <div class="instructions"><span class="instruction"><span class="key">↔</span> 左键拖拽旋转</span><span class="instruction"><span class="key">↕</span> 滚轮缩放</span><span class="instruction"><span class="key">✥</span> 右键拖拽平移</span></div>
+      <div class="actions"><button id="pause" class="control" type="button" aria-label="暂停或继续动画">暂停动画</button><button id="reset" class="control" type="button">重置视角</button><button id="quality" class="control" type="button" title="切换渲染精度">画质 · 平衡</button><button id="hide" class="control" type="button">隐藏界面</button></div>
+    </footer>
+  </div>
+  <button id="show-ui" class="control" type="button">显示界面 · H</button>
+  <div id="fallback"><h2>无法启动可视化</h2><p id="fallback-message">此体验需要支持 WebGL 2 的浏览器。请尝试更新 Chrome、Edge 或 Firefox，并开启硬件加速。</p></div>
+  <script>
+  (() => {
+    'use strict';
+    const canvas = document.getElementById('universe');
+    const gl = canvas.getContext('webgl2', { alpha:false, antialias:false, depth:false, stencil:false, powerPreference:'high-performance', preserveDrawingBuffer:false });
+    const fail = message => { document.getElementById('fallback').style.display='flex'; document.getElementById('fallback-message').textContent=message; };
+    if (!gl) { fail('此体验需要 WebGL 2。请使用新版 Chrome、Edge 或 Firefox，并在浏览器设置中开启硬件加速。'); return; }
+
+    const vertex = `#version 300 es
+    precision highp float;
+    out vec2 vUv;
+    void main() {
+      vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+      vUv = p;
+      gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+    }`;
+
+    const sceneFragment = `#version 300 es
+    precision highp float;
+    in vec2 vUv;
+    out vec4 fragColor;
+    uniform vec2 uResolution;
+    uniform vec3 uCamPos, uForward, uRight, uUp;
+    uniform float uTime;
+    const float PI = 3.141592653589793;
+    float hash21(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }
+    float hash31(vec3 p) { return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453123); }
+    float noise3(vec3 x) {
+      vec3 i=floor(x), f=fract(x); f=f*f*(3.0-2.0*f);
+      float a=mix(hash31(i),hash31(i+vec3(1,0,0)),f.x);
+      float b=mix(hash31(i+vec3(0,1,0)),hash31(i+vec3(1,1,0)),f.x);
+      float c=mix(hash31(i+vec3(0,0,1)),hash31(i+vec3(1,0,1)),f.x);
+      float d=mix(hash31(i+vec3(0,1,1)),hash31(i+vec3(1,1,1)),f.x);
+      return mix(mix(a,b,f.y),mix(c,d,f.y),f.z);
+    }
+    float diskNoise(vec2 p) {
+      return .53*noise3(vec3(p*.73,3.0))
+           + .31*noise3(vec3(p*2.1,9.0))
+           + .16*noise3(vec3(p*5.4,17.0));
+    }
+    vec3 plasma(vec3 hit, vec3 view, out float opacity) {
+      float radius=length(hit.xz);
+      float angle=atan(hit.z,hit.x);
+      float whirl=angle + uTime*(.12+.58/pow(radius,1.35)) + 2.7*log(max(radius,1.0));
+      vec2 flow=vec2(cos(whirl),sin(whirl))*radius;
+      float n=diskNoise(flow*1.35);
+      float lanes=sin(whirl*12.0-radius*4.7+n*16.0)*.5+.5;
+      float fine=sin(radius*47.0-whirl*9.0+n*22.0)*.5+.5;
+      float knots=pow(max(0.0,noise3(vec3(flow*3.1,uTime*.06))-.40)*2.0,2.0);
+      float structure=clamp(.065+1.22*n*n+.20*lanes+.08*fine+.65*knots,.12,1.24);
+      float inner=smoothstep(1.55,2.0,radius);
+      float outer=1.0-smoothstep(7.3,9.25,radius);
+      float radial=pow(2.0/max(radius,2.0),1.35);
+      vec3 rust=vec3(.51,.115,.035);
+      vec3 copper=vec3(.93,.36,.115);
+      vec3 ivory=vec3(1.0,.78,.51);
+      vec3 thermal=mix(rust,copper,1.0-smoothstep(2.9,8.4,radius));
+      thermal=mix(thermal,ivory,(1.0-smoothstep(1.9,3.25,radius))*.86);
+      vec3 velocity=normalize(vec3(-hit.z,0.0,hit.x));
+      float approach=dot(velocity,-view);
+      float doppler=pow(clamp(1.0+approach*.68,.48,1.6),2.0);
+      float farSide=smoothstep(-.5,.7,dot(hit.xz,normalize(uCamPos.xz)));
+      float sideGain=mix(.34,1.0,farSide);
+      float coreLine=exp(-pow((radius-2.18)/.34,2.0))*.38;
+      float emission=(.23+1.8*radial+coreLine)*structure*doppler*sideGain*inner*outer;
+      opacity=clamp((.44+.32*n)*inner*outer*(.73+.25*radial),0.0,.82);
+      return thermal*emission;
+    }
+    vec3 starLayer(vec3 d, vec2 grid, float threshold, float gain) {
+      vec2 uv=vec2(atan(d.z,d.x)/(2.0*PI)+.5, asin(clamp(d.y,-1.0,1.0))/PI+.5)*grid;
+      vec2 cell=floor(uv), f=fract(uv);
+      float seed=hash21(cell+vec2(19.21,8.37));
+      vec2 point=vec2(hash21(cell+vec2(12.3,2.7)),hash21(cell+vec2(4.7,34.8)))*.68+.16;
+      float dist=length(f-point);
+      float brilliance=pow(clamp((seed-threshold)/max(1.0-threshold,.001),0.0,1.0),1.8);
+      float core=exp(-dist*dist*85.0);
+      float halo=exp(-dist*dist*7.0)*.035*brilliance;
+      vec3 tint=mix(vec3(.70,.80,1.0),vec3(1.0,.81,.65),hash21(cell+vec2(5.5,13.9)));
+      return tint*step(threshold,seed)*(core+halo)*(.4+1.8*brilliance)*gain;
+    }
+    vec3 background(vec3 d) {
+      float latitude=dot(d,normalize(vec3(.35,.74,-.57)))+.065*sin(d.x*11.0+d.z*8.0);
+      float band=exp(-pow(abs(latitude)*5.7,1.45));
+      float n=noise3(d*4.7)*.51+noise3(d*11.0)*.32+noise3(d*25.0)*.17;
+      float clouds=band*smoothstep(.31,.68,n);
+      float dust=smoothstep(.46,.72,noise3(d*18.0+vec3(3.1,7.3,1.8)));
+      vec3 sky=vec3(.004,.006,.014);
+      sky+=vec3(.042,.057,.087)*clouds*(1.0-.82*dust);
+      sky+=vec3(.045,.025,.022)*clouds*max(0.0,d.x*.8+d.z*.4);
+      sky+=starLayer(d,vec2(260.0,130.0),.89,.18);
+      sky+=starLayer(d,vec2(510.0,255.0),.987,.90);
+      sky+=starLayer(d,vec2(125.0,65.0),.998,1.45);
+      return sky;
+    }
+    void main() {
+      vec2 p=vUv*2.0-1.0;
+      float aspect=uResolution.x/uResolution.y;
+      float portrait=1.0-smoothstep(.62,.95,aspect);
+      p.y-=.35*portrait;
+      p.x*=aspect;
+      float focal=mix(1.10,1.72,smoothstep(.55,1.0,aspect));
+      vec3 ray=normalize(uForward*focal+uRight*p.x+uUp*p.y);
+      vec3 pos=uCamPos;
+      vec3 light=vec3(0.0);
+      float trans=1.0, closest=100.0;
+      bool captured=false;
+      for(int i=0;i<88;i++) {
+        float r=length(pos);
+        closest=min(closest,r);
+        if(r<1.07) { captured=true; break; }
+        if(i>5 && r>16.0 && dot(pos,ray)>0.0) break;
+        float stepSize=clamp(r*.105,.052,1.12);
+        vec3 toward=-pos/r;
+        vec3 transverse=toward-ray*dot(toward,ray);
+        float lensRange=1.0-smoothstep(4.5,9.5,r);
+        vec3 nextRay=normalize(ray+transverse*(1.64*stepSize/(r*r))*(1.0+.34/r)*lensRange);
+        vec3 nextPos=pos+normalize(ray+nextRay)*stepSize;
+        if(pos.y*nextPos.y<0.0) {
+          float t=pos.y/(pos.y-nextPos.y);
+          vec3 hit=mix(pos,nextPos,t);
+          float diskR=length(hit.xz);
+          if(diskR>1.3 && diskR<9.35) {
+            float alpha;
+            vec3 emission=plasma(hit,ray,alpha);
+            light+=trans*emission*alpha;
+            trans*=1.0-alpha*.87;
+          }
+        }
+        if(r>1.65 && r<9.7 && abs(pos.y)<.72) {
+          float haze=exp(-abs(pos.y)*5.2)*smoothstep(1.65,2.6,r)*(1.0-smoothstep(7.5,9.7,r));
+          float cloud=noise3(vec3(pos.xz*.72+uTime*.012,pos.y*2.0));
+          light+=trans*vec3(.31,.078,.018)*haze*cloud*stepSize*.22;
+        }
+        pos=nextPos;
+        ray=nextRay;
+      }
+      float photon=exp(-pow((closest-1.42)/.095,2.0));
+      light+=trans*vec3(.58,.30,.11)*photon*.16;
+      if(!captured) light+=trans*background(ray);
+      fragColor=vec4(clamp(light*.82,0.0,1.0),1.0);
+    }`;
+
+    const postFragment = `#version 300 es
+    precision highp float;
+    in vec2 vUv;
+    out vec4 fragColor;
+    uniform sampler2D uScene;
+    uniform vec2 uTexel;
+    uniform float uTime;
+    float luminance(vec3 c) { return dot(c,vec3(.2126,.7152,.0722)); }
+    vec3 bright(vec2 uv) { vec3 c=texture(uScene,clamp(uv,vec2(0.0),vec2(1.0))).rgb; return c*smoothstep(.28,.72,luminance(c)); }
+    void main() {
+      vec3 base=texture(uScene,vUv).rgb;
+      vec2 step1=uTexel*4.0, step2=uTexel*12.0;
+      vec3 bloom=bright(vUv)*.18;
+      bloom+=(bright(vUv+vec2(step1.x,0.0))+bright(vUv-vec2(step1.x,0.0))+bright(vUv+vec2(0.0,step1.y))+bright(vUv-vec2(0.0,step1.y)))*.105;
+      bloom+=(bright(vUv+step1)+bright(vUv-step1)+bright(vUv+vec2(step1.x,-step1.y))+bright(vUv+vec2(-step1.x,step1.y)))*.066;
+      bloom+=(bright(vUv+vec2(step2.x,0.0))+bright(vUv-vec2(step2.x,0.0))+bright(vUv+vec2(0.0,step2.y))+bright(vUv-vec2(0.0,step2.y)))*.037;
+      vec3 color=base+bloom*1.22;
+      color=(color*(2.51*color+.03))/(color*(2.43*color+.59)+.14);
+      color=pow(clamp(color,0.0,1.0),vec3(1.0/2.2));
+      float edge=length((vUv-.5)*vec2(1.05,.86));
+      color*=1.0-.38*smoothstep(.26,.79,edge);
+      float grain=fract(sin(dot(gl_FragCoord.xy+fract(uTime)*37.0,vec2(12.9898,78.233)))*43758.5453);
+      color+=(grain-.5)*.009;
+      fragColor=vec4(clamp(color,0.0,1.0),1.0);
+    }`;
+
+    function compile(type,source) {
+      const shader=gl.createShader(type); gl.shaderSource(shader,source); gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader)||'着色器编译失败');
+      return shader;
+    }
+    function program(fragment) {
+      const prog=gl.createProgram();
+      const vert=compile(gl.VERTEX_SHADER,vertex), frag=compile(gl.FRAGMENT_SHADER,fragment);
+      gl.attachShader(prog,vert);gl.attachShader(prog,frag);gl.linkProgram(prog);
+      gl.deleteShader(vert);gl.deleteShader(frag);
+      if (!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog)||'着色器链接失败');
+      return prog;
+    }
+    let sceneProgram,postProgram;
+    try { sceneProgram=program(sceneFragment);postProgram=program(postFragment); }
+    catch(e) { console.error(e); fail('图形着色器初始化失败：'+e.message); return; }
+    const sceneUniforms={};
+    for(const name of ['uResolution','uCamPos','uForward','uRight','uUp','uTime']) sceneUniforms[name]=gl.getUniformLocation(sceneProgram,name);
+    const postUniforms={};
+    for(const name of ['uScene','uTexel','uTime']) postUniforms[name]=gl.getUniformLocation(postProgram,name);
+    const vao=gl.createVertexArray();gl.bindVertexArray(vao);
+    const texture=gl.createTexture();const framebuffer=gl.createFramebuffer();
+    let renderWidth=0,renderHeight=0,quality=0,renderFactor=1;
+    const presets=[{label:'平衡',scale:.72},{label:'精细',scale:1.0},{label:'节能',scale:.49}];
+    let yaw=0,pitch=.4,distance=12.2,target=[0,0,0];
+    let lastTime=performance.now(),clock=0,paused=false,frames=0,fpsSum=0,fpsTime=0;
+    const clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
+    function resize() {
+      const dpr=Math.min(window.devicePixelRatio||1,1.65);
+      const w=Math.max(1,Math.round(window.innerWidth*dpr));
+      const h=Math.max(1,Math.round(window.innerHeight*dpr));
+      if(canvas.width!==w || canvas.height!==h) { canvas.width=w;canvas.height=h; }
+      const factor=presets[quality].scale*renderFactor;
+      const cap=quality===1?2400:1700;
+      const scale=Math.min(1,cap/Math.max(w*factor,h*factor));
+      const rw=Math.max(2,Math.round(w*factor*scale)),rh=Math.max(2,Math.round(h*factor*scale));
+      if(renderWidth===rw && renderHeight===rh)return;
+      renderWidth=rw;renderHeight=rh;
+      gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,rw,rh,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);
+      if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)!==gl.FRAMEBUFFER_COMPLETE) fail('无法创建离屏渲染缓冲区，请更新显卡驱动。');
+      gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    }
+    const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+    function render(now) {
+      const dt=Math.min((now-lastTime)/1000,.1);lastTime=now;
+      if(!paused)clock+=dt;
+      const cp=Math.cos(pitch),sp=Math.sin(pitch),sy=Math.sin(yaw),cy=Math.cos(yaw);
+      const pos=[target[0]+distance*cp*sy,target[1]+distance*sp,target[2]+distance*cp*cy];
+      const forward=[-cp*sy,-sp,-cp*cy];
+      const right=[cy,0,-sy],up=cross(right,forward);
+      gl.bindVertexArray(vao);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
+      gl.viewport(0,0,renderWidth,renderHeight);
+      gl.useProgram(sceneProgram);
+      gl.uniform2f(sceneUniforms.uResolution,renderWidth,renderHeight);
+      gl.uniform3fv(sceneUniforms.uCamPos,pos);
+      gl.uniform3fv(sceneUniforms.uForward,forward);
+      gl.uniform3fv(sceneUniforms.uRight,right);
+      gl.uniform3fv(sceneUniforms.uUp,up);
+      gl.uniform1f(sceneUniforms.uTime,clock);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+      gl.viewport(0,0,canvas.width,canvas.height);
+      gl.useProgram(postProgram);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.uniform1i(postUniforms.uScene,0);
+      gl.uniform2f(postUniforms.uTexel,1/renderWidth,1/renderHeight);
+      gl.uniform1f(postUniforms.uTime,clock);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+      frames++; fpsSum+=dt;fpsTime+=dt;
+      if(fpsTime>1.5) {
+        const fps=Math.round(frames/Math.max(fpsSum,.001));
+        document.getElementById('fps').innerHTML=fps+' <em>FPS</em>';
+        document.getElementById('distance').innerHTML=distance.toFixed(1)+' <em>Rg</em>';
+        document.getElementById('angle').innerHTML=(pitch*180/Math.PI).toFixed(1)+' <em>°</em>';
+        if(fps<23 && renderFactor>.69) {renderFactor=Math.max(.68,renderFactor-.12);resize();}
+        frames=0;fpsSum=0;fpsTime=0;
+      }
+      requestAnimationFrame(render);
+    }
+    const pointers=new Map();let lastPinch=0,lastMid=null;
+    canvas.addEventListener('contextmenu',e=>e.preventDefault());
+    canvas.addEventListener('pointerdown',e=>{e.preventDefault();canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,button:e.button});canvas.classList.add('dragging');lastPinch=0;lastMid=null;});
+    canvas.addEventListener('pointermove',e=>{
+      const previous=pointers.get(e.pointerId);if(!previous)return;
+      const dx=e.clientX-previous.x,dy=e.clientY-previous.y;
+      previous.x=e.clientX;previous.y=e.clientY;
+      if(pointers.size>1) {
+        const two=[...pointers.values()];
+        const pinch=Math.hypot(two[0].x-two[1].x,two[0].y-two[1].y);
+        const mid={x:(two[0].x+two[1].x)*.5,y:(two[0].y+two[1].y)*.5};
+        if(lastPinch)distance=clamp(distance*lastPinch/Math.max(pinch,1),6.5,29);
+        if(lastMid)pan(mid.x-lastMid.x,mid.y-lastMid.y);
+        lastPinch=pinch;lastMid=mid;
+      } else if(e.buttons===2 || previous.button===2 || e.shiftKey) pan(dx,dy);
+      else {yaw-=dx*.005;pitch=clamp(pitch+dy*.005,-1.40,1.40);}
+    });
+    function pan(dx,dy) {
+      const cp=Math.cos(pitch),sp=Math.sin(pitch),sy=Math.sin(yaw),cy=Math.cos(yaw);
+      const right=[cy,0,-sy],up=cross(right,[-cp*sy,-sp,-cp*cy]);
+      const speed=distance*.0017;
+      for(let i=0;i<3;i++)target[i]+=-dx*speed*right[i]+dy*speed*up[i];
+      const len=Math.hypot(...target);if(len>6)target=target.map(v=>v*6/len);
+    }
+    function stopPointer(e) {pointers.delete(e.pointerId);if(!pointers.size)canvas.classList.remove('dragging');lastPinch=0;lastMid=null;}
+    canvas.addEventListener('pointerup',stopPointer);canvas.addEventListener('pointercancel',stopPointer);
+    canvas.addEventListener('wheel',e=>{e.preventDefault();distance=clamp(distance*Math.exp(e.deltaY*.001),6.5,29);},{passive:false});
+    document.getElementById('pause').addEventListener('click',e=>{paused=!paused;e.currentTarget.textContent=paused?'继续动画':'暂停动画';e.currentTarget.classList.toggle('active',paused);});
+    document.getElementById('reset').addEventListener('click',()=>{yaw=0;pitch=.4;distance=12.2;target=[0,0,0];});
+    document.getElementById('quality').addEventListener('click',e=>{quality=(quality+1)%presets.length;renderFactor=1;e.currentTarget.textContent='画质 · '+presets[quality].label;resize();});
+    function toggleUI() {const hidden=document.getElementById('ui').classList.toggle('hidden');document.getElementById('show-ui').classList.toggle('visible',hidden);}
+    document.getElementById('hide').addEventListener('click',toggleUI);
+    document.getElementById('show-ui').addEventListener('click',toggleUI);
+    document.addEventListener('keydown',e=>{if(e.key.toLowerCase()==='h' && !e.repeat)toggleUI();if(e.key==='Escape' && document.getElementById('ui').classList.contains('hidden'))toggleUI();});
+    window.addEventListener('resize',resize);
+    resize();requestAnimationFrame(render);
+  })();
+  </script>
+</body>
+</html>
